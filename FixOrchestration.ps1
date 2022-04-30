@@ -68,6 +68,6 @@ foreach($FailedDev in $FailedDevices){
         Write-Output -InputObject "Fixing $Name"
         $OrchstrationClass.ResetMOGMember($ResourceID);
     }
-    Get-CMOrchestrationGroup -Name "SDE SLS SUPS" | Invoke-CMOrchestrationGroup -IgnoreServiceWindow $true
+    Get-CMOrchestrationGroup -Name $Faileddev.GroupName | Invoke-CMOrchestrationGroup -IgnoreServiceWindow $true
     Pop-Location
 }
