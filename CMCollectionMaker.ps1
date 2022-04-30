@@ -4,16 +4,14 @@ Param
     $MaxCOllectionToMake = 2
 )
 $Folder = Get-AutomationVariable -Name ModelsFolder # 'Models'
-$NamingStandard = Get-AutomationVariable -Name NamingStandard #'Models_<Manufacturer>_<Model>'
+$NamingStandard = Get-AutomationVariable -Name ModelsCollectionNamingStandard #'Models_<Manufacturer>_<Model>'
 $SiteCode = Get-AutomationVariable -Name SiteCode #"CHQ" 
 $MEMCMDB = Get-AutomationVariable -Name MEMCMDataBase #"ConfigMgr_CHQ" 
 $MEMCMServer = Get-AutomationVariable -Name MEMCMServer # "CM1.corp.contoso.com" 
 $LimitingCollection = Get-AutomationVariable -Name DefaultLimitingCollection #'SMS00001'
 
 Import-module SQLPS
-if((Get-Module ConfigurationManager) -eq $null) {
-    Import-Module "$($ENV:SMS_ADMIN_UI_PATH)\..\ConfigurationManager.psd1" @initParams 
-}
+Import-Module ConfigurationManager  
 
 $initParams = @{}
 if((Get-PSDrive -Name $SiteCode -PSProvider CMSite -ErrorAction SilentlyContinue) -eq $null) {
@@ -40,7 +38,7 @@ Select *
 From ModelCTE
 Where [Count] > $MinDeviceCount
 order by [Count] Desc, Model0, Manufacturer0"
-$Models = Invoke-Sqlcmd -ServerInstance $MEMCMServer -Database MEMCMDB -Query $query
+$Models = Invoke-Sqlcmd -ServerInstance $MEMCMServer -Database $MEMCMDB -Query $query
 
 
 
@@ -77,7 +75,7 @@ Foreach($Model in $models){
     Write-Output -InputObject "Making Collection $CollectionName"
     $Collection = New-CMCollection -Name $COllectionName -LimitingCollectionId $LimitingCollection -RefreshSchedule $Schedule -CollectionType Device -Comment "Made by Azure Automation!"
     Move-CMObject -FolderPath "$($SiteCode):\DeviceCollection\$Folder" -InputObject $collection
-    $COlQuery = "select *  from  SMS_R_System inner join {0} on {0}.ResourceId = SMS_R_System.ResourceId where {0}.{1} = '{2}'" -f   $SMSConversion[$model.View][0], $SMSConversion[$model.View][1], $model.model0
+    $COlQuery = "select *  from  SMS_R_System inner join {0} on {0}.ResourceId = SMS_R_System.ResourceId where {0}.{1} = '{2}'" -f   $model.Class, $model.Property, $model.model0
     Add-CMDeviceCollectionQueryMembershipRule -CollectionId $COllection.CollectionID -QueryExpression $COlQuery -RuleName $COllectionName -ValidateQueryHasResult
 
     $CollecitonMade++
