@@ -5,13 +5,18 @@ Param(
 Import-module SQLPS
 Import-Module ConfigurationManager  
 
-$SiteCode = "CHQ" 
-$MEMCMDB =  "ConfigMgr_CHQ" 
-$MEMCMServer = "CM1.corp.contoso.com" 
-$LimitingCollection = 'CHQ0002B'
-$RootCollection = 'SMS00001'
-$ADGroupPath = 'OU=GROUPS,OU=CORP,DC=corp,DC=contoso,DC=com'
+
 $Rings = [ordered]@{Ring1=.1;Ring2=.2;Ring3=.3;Ring4=.4}
+
+$NamingStandard = Get-AutomationVariable -Name ModelsCollectionNamingStandard #'Models_<Manufacturer>_<Model>'
+$SiteCode = Get-AutomationVariable -Name SiteCode #"CHQ" 
+$MEMCMDB = Get-AutomationVariable -Name MEMCMDataBase #"ConfigMgr_CHQ" 
+$MEMCMServer = Get-AutomationVariable -Name MEMCMServer # "CM1.corp.contoso.com" 
+$RootCollection = Get-AutomationVariable -Name DefaultLimitingCollection #'SMS00001'
+$DesktopCollection = Get-AutomationVariable -Name DesktopCollection #'CHQ0002B'
+$ADGroupPath = Get-AutomationVariable -Name ADGroupPath #'OU=GROUPS,OU=CORP,DC=corp,DC=contoso,DC=com'
+$Credential = Get-AutomationPSCredential -name LabAdmin
+
 
 $initParams = @{}
 if((Get-PSDrive -Name $SiteCode -PSProvider CMSite -ErrorAction SilentlyContinue) -eq $null) {
@@ -19,7 +24,6 @@ if((Get-PSDrive -Name $SiteCode -PSProvider CMSite -ErrorAction SilentlyContinue
 }
 
 $Query = "WITH WeightedCTE as (
-
 	SELECT
 		u.Resourceid 'UserResourceID',
 		u.User_Name0,
@@ -42,21 +46,25 @@ $Query = "WITH WeightedCTE as (
 		on CS.ResourceID = m.ResourceID
 )
 
-
-
 SELECT WeightedCTE.*
 FROM WeightedCTE
 INNER JOIN v_FullCollectionMembership_Valid FCM
-ON FCM.ResourceID = WeightedCTE.MachineID and FCM.CollectionID = '$LimitingCollection'
+ON FCM.ResourceID = WeightedCTE.MachineID and FCM.CollectionID = '$DesktopCollection'
 Order by (BusinessUnitRN*100/BusinessUnitCount + ModelRN*100/ModelCount) desc
-
 "
+$Candidates = Invoke-Sqlcmd -ServerInstance $MEMCMServer  -Database $MEMCMDB -Query $query
 
-$RingCandidates = Invoke-Sqlcmd -ServerInstance $MEMCMServer  -Database $MEMCMDB -Query $query 
-$CandidateTotal = $RingCandidates.Count
+#Identify candidates and who is already in a ring
+$CandidateTotal = $Candidates.Count
 $Index = 0
-[array]$ExistingADGroups = Get-ADGroup -LDAPFilter "(Name=$($UserADGroupNamingStandard.replace('<Ring>','*')))" -Properties member
+[array]$ExistingADGroups = Get-ADGroup -LDAPFilter "(Name=$($UserADGroupNamingStandard.replace('<Ring>','*')))" -Properties member -Credential $Credential
+$RingCandidates = $Candidates.Where({$PSItem.Distinguished_Name0 -notin $ExistingADGroups.Member})
+"Total Candidates: $candidateTotal"
+$ExistingADGroups.foreach({"$($Psitem.SamAccountName) - $($Psitem.member.count)"})
+"Total Remaining: $($RingCandidates.Count)"
 
+
+#Setup Rings
 Foreach($Ring in $Rings.Keys){
     Write-output -InputObject "$ring"
     #Setup AD Group
@@ -65,20 +73,22 @@ Foreach($Ring in $Rings.Keys){
     if ($Null -eq $ADGroup)
     {
         Write-Output -InputObject "Making AD Group for $Ring - $ADGroupName"
-        $ADGroup = New-ADGroup -Name $ADGroupName -Path $ADGroupPath -Description "Enterprise Rollout Group for $Ring" -PassThru -GroupScope Global -GroupCategory Distribution
+        $ADGroup = New-ADGroup -Name $ADGroupName -Path $ADGroupPath -Description "Enterprise Rollout Group for $Ring" -PassThru -GroupScope Global -GroupCategory Distribution  -Credential $Credential
     }
 
     #Populate AD Group
     $RingPercentage = $rings[$ring]
     $TargetPopulation = [Math]::Floor(($RingPercentage * $CandidateTotal)  - $ADGroup.Member.count)
     if ($TargetPopulation -gt 0){
-        Write-output -InputObject "Adding $($TargetPopulation + 1) to $adgroupname"
         $Users = $RingCandidates[$index..($TargetPopulation+$index)]
-        Add-ADGroupMember -Members $Users.Distinguished_Name0 -Identity $ADGroupName
+        if ($Users.Count -gt 0){
+            Write-output -InputObject "Adding $($TargetPopulation + 1) to $adgroupname"
+            Add-ADGroupMember -Members $Users.Distinguished_Name0 -Identity $ADGroupName -Credential $Credential
+        }
+        $Index = $Index + $TargetPopulation +1
     }
-    $Index = $Index + $TargetPopulation +1
-    $ADGroup = Get-ADGroup $ADGroup -Properties member
-    $users = $RingCandidates.where({$PSItem.Distinguished_Name0 -in $ADGroup.member})
+    $ADGroup = Get-ADGroup $ADGroupName -Properties member -Credential $Credential
+    $users = $Candidates.where({$PSItem.Distinguished_Name0 -in $ADGroup.member})
     Write-Output -InputObject "$ADGroupName now has $($adgroup.member.count) members"
 
     #Update Collection
@@ -92,6 +102,9 @@ Foreach($Ring in $Rings.Keys){
 
     #Setting CM Membership
     Add-CMDeviceCollectionDirectMembershipRule -CollectionId $Collection.CollectionID -ResourceId $users.MachineID -WarningAction Ignore
-    $Collection.Get()
-    Write-Output -InputObject "$CollectionName Has $($Collection.MemberCount) systems"
 }
+
+
+
+#ResetAD: $ExistingADGroups.SamAccountName | Remove-ADGroup
+#Reset Collections:Get-CMDeviceCollection -name $CollectionNamingStandard.Replace("<Ring>",'*')| Remove-CMDeviceCollection 
