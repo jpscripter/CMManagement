@@ -16,7 +16,6 @@ $Lab = get-Credential -UserName 'corp\labadmin' -Message 'lab admin'
 Set-impersonation -credential $lab 
 Invoke-DbaQuery -SqlInstance CM1 -Database ConfigMgr_chq -Query 'select suser_name()'
 Set-Impersonation 
-Invoke-DbaQuery -SqlInstance CM1 -Database ConfigMgr_chq -Query 'select suser_name()'
 
 
 
@@ -29,7 +28,14 @@ Set-impersonation -credential $lab -netonly
 
 
 <#
-1 - Only works with current thread
+Pros
+1 - Flexibility
+2 - Cross domain
+
+cons
+1 - Impersonation only works with current thread
 2 - does not pass to child processes
-3 - whoami is weird
+3 - whoami and some other features get weird
+4 - You have to be aware of your environment 
+    (if your thread also reaches out to other systems, those can accidentally be impacted)
 #>

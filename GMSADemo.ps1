@@ -26,11 +26,11 @@ invoke-command -ScriptBlock {whoami} -ComputerName cm1 -Credential $GMSA
 pros
 1- troubleshooting 
 2- Strong passwords with 30 day rotation
-3- microsoft native
-4- 
+3- microsoft native?
 
 cons
 1- Usually doesnt work with Web requests using basic auth
 2- no interactive logins
+3- No cross domain support
 
 #>
