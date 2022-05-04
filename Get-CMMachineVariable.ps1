@@ -11,9 +11,9 @@ Function Get-CMMachineVariable {
                 :Var foreach ($Variable in $VariableInstances){
                     $Name = $Variable.name
                     if ($name -NE $VariableName -and -not [string]::IsNullOrWhiteSpace($VariableName)){Continue :var}
-                    [xml]$PolicySecret = $Secret.value
+                    [xml]$PolicySecret = $Variable.value
                     $innerValue = $PolicySecret.PolicySecret.InnerText
-    
+
                     $VariableByteArray =@()
                     for ($I = 0; $I -lt ($innerValue.Length/2-4);$I++){
                         $VariableByteArray += [convert]::ToByte($innerValue.Substring(($I + 4)*2,2),16)

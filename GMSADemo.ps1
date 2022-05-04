@@ -21,6 +21,16 @@ $GMSA.GetNetworkCredential().password
 
 Get-WmiObject -Class win32_computersystem -ComputerName cm1 -Credential $gmsa
 invoke-command -ScriptBlock {whoami} -ComputerName cm1 -Credential $GMSA
+
 <#
-1- 
+pros
+1- troubleshooting 
+2- Strong passwords with 30 day rotation
+3- microsoft native
+4- 
+
+cons
+1- Usually doesnt work with Web requests using basic auth
+2- no interactive logins
+
 #>

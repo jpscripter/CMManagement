@@ -29,7 +29,6 @@ Set-impersonation -credential $lab -netonly
 
 
 <#
-
 1 - Only works with current thread
 2 - does not pass to child processes
 3 - whoami is weird
